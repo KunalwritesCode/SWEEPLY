@@ -64,9 +64,15 @@ export default async function Home() {
     );
   }
 
-  const savedRecipes = session.user?.email
-    ? await getRecipes(session.user.email)
-    : [];
+  let savedRecipes = [];
+  if (session.user?.email) {
+    try {
+      savedRecipes = await getRecipes(session.user.email);
+    } catch (err) {
+      console.error("Failed to load recipes on first load:", err);
+      // Fail silently — user sees empty recipes list, not a crash
+    }
+  }
 
   return (
     <main className="min-h-screen p-8">

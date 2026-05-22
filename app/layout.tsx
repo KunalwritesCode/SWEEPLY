@@ -9,7 +9,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Keep Neon database warm */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `fetch('/api/ping').catch(() => {})`,
+          }}
+        />
+      </body>
     </html>
   );
 }
