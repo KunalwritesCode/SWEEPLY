@@ -37,18 +37,15 @@ export async function previewMessages(
   );
 
   const messages = settled
-    .filter(
-      (r): r is PromiseFulfilledResult<
-        Awaited<ReturnType<typeof gmail.users.messages.get>>
-      > => r.status === "fulfilled"
-    )
+    .filter((r) => r.status === "fulfilled")
     .map((r) => {
-      const headers = r.value.data.payload?.headers ?? [];
+      const result = r as PromiseFulfilledResult<Awaited<ReturnType<typeof gmail.users.messages.get>>>;
+      const headers = result.value.data.payload?.headers ?? [];
       const get = (name: string) =>
         headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
           ?.value ?? "";
       return {
-        id: r.value.data.id!,
+        id: result.value.data.id!,
         from: get("From"),
         subject: get("Subject"),
         date: get("Date"),
