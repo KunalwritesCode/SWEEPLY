@@ -25,7 +25,7 @@ export async function previewMessages(
 
   if (ids.length === 0) return { totalEstimate, messages: [] };
 
-  const settled = await Promise.allSettled(
+  const results = await Promise.allSettled(
     ids.map((m) =>
       gmail.users.messages.get({
         userId: "me",
@@ -36,21 +36,22 @@ export async function previewMessages(
     )
   );
 
-  const messages = settled
-    .filter((r) => r.status === "fulfilled")
-    .map((r) => {
-      const result = r as PromiseFulfilledResult<Awaited<ReturnType<typeof gmail.users.messages.get>>>;
-      const headers = result.value.data.payload?.headers ?? [];
-      const get = (name: string) =>
-        headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
-          ?.value ?? "";
-      return {
-        id: result.value.data.id!,
-        from: get("From"),
-        subject: get("Subject"),
-        date: get("Date"),
-      };
+  const messages: { id: string; from: string; subject: string; date: string }[] = [];
+
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    const data = result.value.data;
+    const headers = data.payload?.headers ?? [];
+    const get = (name: string) =>
+      headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
+        ?.value ?? "";
+    messages.push({
+      id: data.id!,
+      from: get("From"),
+      subject: get("Subject"),
+      date: get("Date"),
     });
+  }
 
   return { totalEstimate, messages };
 }
