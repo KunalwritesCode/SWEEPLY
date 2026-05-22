@@ -2,6 +2,7 @@ import { auth, signIn, signOut } from "@/auth";
 import InboxCleanup from "@/components/InboxCleanup";
 import SpotlightButton from "@/components/SpotlightButton";
 import { getRecipes } from "@/lib/recipes";
+import type { Recipe } from "@/lib/recipes";
 
 function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const box = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-9 w-9" : "h-11 w-11";
@@ -64,7 +65,7 @@ export default async function Home() {
     );
   }
 
-  let savedRecipes = [];
+  let savedRecipes: Recipe[] = [];
   if (session.user?.email) {
     try {
       savedRecipes = await getRecipes(session.user.email);
