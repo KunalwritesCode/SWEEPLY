@@ -6,20 +6,26 @@ export function getGmailClient(accessToken: string) {
   return google.gmail({ version: "v1", auth: oauth2 });
 }
 
-export async function listRecentMessages(accessToken: string, max = 20) {
+// Fetch up to maxPreview message IDs + metadata for preview grouping
+export async function previewMessages(
+  accessToken: string,
+  query: string,
+  maxPreview = 40
+) {
   const gmail = getGmailClient(accessToken);
 
-  // Step 1: get message IDs
-  const list = await gmail.users.messages.list({
+  const listRes = await gmail.users.messages.list({
     userId: "me",
-    maxResults: max,
+    q: query,
+    maxResults: 100,
   });
 
-  const ids = list.data.messages ?? [];
-  if (ids.length === 0) return [];
+  const totalEstimate = listRes.data.resultSizeEstimate ?? 0;
+  const ids = (listRes.data.messages ?? []).slice(0, maxPreview);
 
-  // Step 2: fetch metadata for each (batched would be better; fine for 20)
-  const messages = await Promise.all(
+  if (ids.length === 0) return { totalEstimate, messages: [] };
+
+  const settled = await Promise.allSettled(
     ids.map((m) =>
       gmail.users.messages.get({
         userId: "me",
@@ -30,16 +36,64 @@ export async function listRecentMessages(accessToken: string, max = 20) {
     )
   );
 
-  return messages.map((res) => {
-    const headers = res.data.payload?.headers ?? [];
-    const get = (name: string) =>
-      headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
-    return {
-      id: res.data.id!,
-      subject: get("Subject"),
-      from: get("From"),
-      date: get("Date"),
-      snippet: res.data.snippet ?? "",
-    };
-  });
+  const messages = settled
+    .filter(
+      (r): r is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof gmail.users.messages.get>>
+      > => r.status === "fulfilled"
+    )
+    .map((r) => {
+      const headers = r.value.data.payload?.headers ?? [];
+      const get = (name: string) =>
+        headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
+          ?.value ?? "";
+      return {
+        id: r.value.data.id!,
+        from: get("From"),
+        subject: get("Subject"),
+        date: get("Date"),
+      };
+    });
+
+  return { totalEstimate, messages };
+}
+
+// Paginate all matching IDs and batch-move to TRASH
+export async function trashByQuery(
+  accessToken: string,
+  query: string,
+  cap = 5000
+): Promise<number> {
+  const gmail = getGmailClient(accessToken);
+  let trashed = 0;
+  let pageToken: string | undefined;
+
+  do {
+    const listRes = await gmail.users.messages.list({
+      userId: "me",
+      q: query,
+      maxResults: 500,
+      ...(pageToken ? { pageToken } : {}),
+    });
+
+    const messages = listRes.data.messages ?? [];
+    pageToken = listRes.data.nextPageToken ?? undefined;
+    if (messages.length === 0) break;
+
+    const ids = messages.map((m) => m.id!);
+
+    await gmail.users.messages.batchModify({
+      userId: "me",
+      requestBody: {
+        ids,
+        addLabelIds: ["TRASH"],
+        removeLabelIds: ["INBOX"],
+      },
+    });
+
+    trashed += ids.length;
+    if (trashed >= cap) break;
+  } while (pageToken);
+
+  return trashed;
 }
